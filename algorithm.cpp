@@ -127,7 +127,7 @@ string uc_explist(string const initialState, string const goalState,
         Node* cur = openHeap.back();
         openHeap.pop_back();
 
-        // 弹出就顺手把 inOpen 的这一条清掉（如果还指着它）
+        // erase current pointer
         auto itCurOpen = inOpen.find(cur->state);
         if (itCurOpen != inOpen.end() && itCurOpen->second == cur) {
             inOpen.erase(itCurOpen);
@@ -140,7 +140,7 @@ string uc_explist(string const initialState, string const goalState,
             continue;
         }
 
-        // 只有“从堆顶弹出目标”才返回 —— 保证最优
+        // only accept min-g
         if (cur->state == goalState) {
             string res = std::move(cur->path);
             pathLength = (int)res.size();
@@ -184,7 +184,7 @@ string uc_explist(string const initialState, string const goalState,
                     old->alive = false;               // mark old dead
                 } else {
                     numOfAttemptedNodeReExpansions++;
-                    continue;                         // not better, skip
+                    continue;                         
                 }
             }
 
