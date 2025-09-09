@@ -88,36 +88,86 @@ inline bool isInverse(char a, char b)
 string uc_explist(string const initialState, string const goalState, int &pathLength, int &numOfStateExpansions, int &maxQLength,
                   float &actualRunningTime, int &numOfDeletionsFromMiddleOfHeap, int &numOfLocalLoopsAvoided, int &numOfAttemptedNodeReExpansions)
 {
-
-    string path;
-    clock_t startTime;
-
+    // init UC
+    pathLength = 0;
+    numOfStateExpansions = 0;
+    maxQLength = 0;
+    actualRunningTime = 0.0f;
     numOfDeletionsFromMiddleOfHeap = 0;
     numOfLocalLoopsAvoided = 0;
     numOfAttemptedNodeReExpansions = 0;
-    // Big Q
-    vector<Node *> openHeap;
-
-    // Open Queue
-    unordered_map<string, Node *> inOpen;
-
-    // Extened Queue
-    unordered_map<string, int> bestClosedG;
-
-    // cout << "------------------------------" << endl;
-    // cout << "<<uc_explist>>" << endl;
-    // cout << "------------------------------" << endl;
+    string path;
+    clock_t startTime = clock();
     actualRunningTime = 0.0;
-    startTime = clock();
-    srand(time(NULL));                   // RANDOM NUMBER GENERATOR - ONLY FOR THIS DEMO.  YOU REALLY DON'T NEED THIS! DISABLE THIS STATEMENT.
-    maxQLength = rand() % 200;           // AT THE MOMENT, THIS IS JUST GENERATING SOME DUMMY VALUE.  YOUR ALGORITHM IMPLEMENTATION SHOULD COMPUTE THIS PROPERLY.
-    numOfStateExpansions = rand() % 200; // AT THE MOMENT, THIS IS JUST GENERATING SOME DUMMY VALUE.  YOUR ALGORITHM IMPLEMENTATION SHOULD COMPUTE THIS PROPERLY
 
-    //***********************************************************************************************************
-    actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
-    path = "DDRRLLLUUURDLUDURDLUU"; // this is just a dummy path for testing the function
-    pathLength = path.size();
-    return path;
+    // corner case
+    if (initialState == goalState)
+    {
+        actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
+        return ""; // empty path
+    }
+
+    // MINI-HEAP STL
+    vector<Node *> openHeap;                // Big Q
+    unordered_map<string, Node *> inOpen;   // Open Queue
+    unordered_map<string, int> bestClosedG; // Extened Queue
+
+    // start node
+    Node *start = new Node();
+    start->state = initialState;
+    start->path = "";
+    start->g = 0;
+    start->h = 0;
+    start->f = 0;
+    start->alive = true;
+
+    // init heap
+    openHeap.push_back(start);
+    make_heap(openHeap.begin(), openHeap.end(), CmpUC{}); // self-defined MINI-HEAP based on vector
+    inOpen[start->state] = start;
+    maxQLength = (int)openHeap.size();
+
+    while (!openHeap.empty())
+    {
+        pop_heap(openHeap.begin(), openHeap.end(), CmpUC{}); // pop and keep mini-heap
+        Node *cur = openHeap.back();
+        openHeap.pop_back(); // remove it
+
+        // realse space of closed node
+        if (!cur->alive)
+        {
+            numOfDeletionsFromMiddleOfHeap++;
+            delete cur;
+            continue;
+        }
+
+        if (cur->state == goalState)
+        {
+            string path = cur->path;
+            pathLength = (int)path.size();
+            actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
+
+            delete cur;
+            for (Node *nd : openHeap)
+                delete nd;
+            return path;
+        }
+
+        // Expanded finsished
+        numOfStateExpansions++;
+
+        auto itC = bestClosedG.find(cur->state);
+        if (itC == bestClosedG.end() || cur->g < itC->second)
+        {
+            bestClosedG[cur->state] = cur->g;
+        }
+
+        delete cur;
+    }
+    
+    // no result fund
+    actualRunningTime = actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
+    return "";
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////
