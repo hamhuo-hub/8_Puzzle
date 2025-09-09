@@ -85,88 +85,132 @@ inline bool isInverse(char a, char b)
 // Move Generator:
 //
 ////////////////////////////////////////////////////////////////////////////////////////////
-string uc_explist(string const initialState, string const goalState, int &pathLength, int &numOfStateExpansions, int &maxQLength,
-                  float &actualRunningTime, int &numOfDeletionsFromMiddleOfHeap, int &numOfLocalLoopsAvoided, int &numOfAttemptedNodeReExpansions)
+string uc_explist(string const initialState, string const goalState,
+                  int &pathLength, int &numOfStateExpansions, int &maxQLength,
+                  float &actualRunningTime, int &numOfDeletionsFromMiddleOfHeap,
+                  int &numOfLocalLoopsAvoided, int &numOfAttemptedNodeReExpansions)
 {
-    // init UC
-    pathLength = 0;
-    numOfStateExpansions = 0;
-    maxQLength = 0;
+    // reset stats
+    pathLength = 0; numOfStateExpansions = 0; maxQLength = 0;
     actualRunningTime = 0.0f;
     numOfDeletionsFromMiddleOfHeap = 0;
     numOfLocalLoopsAvoided = 0;
     numOfAttemptedNodeReExpansions = 0;
-    string path;
-    clock_t startTime = clock();
-    actualRunningTime = 0.0;
 
-    // corner case
-    if (initialState == goalState)
-    {
-        actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
-        return ""; // empty path
+    clock_t startTime = clock();
+
+    // start==goal
+    if (initialState == goalState) {
+        actualRunningTime = float(clock() - startTime) / CLOCKS_PER_SEC;
+        return "";
     }
 
-    // MINI-HEAP STL
-    vector<Node *> openHeap;                // Big Q
-    unordered_map<string, Node *> inOpen;   // Open Queue
-    unordered_map<string, int> bestClosedG; // Extened Queue
+    // OPEN heap + indexes + CLOSED
+    vector<Node*> openHeap;
+    unordered_map<string, Node*> inOpen;
+    unordered_map<string, int>   bestClosedG;
 
     // start node
-    Node *start = new Node();
+    Node* start = new Node();
     start->state = initialState;
-    start->path = "";
-    start->g = 0;
-    start->h = 0;
-    start->f = 0;
-    start->alive = true;
+    start->path  = "";
+    start->g = 0; start->h = 0; start->f = 0; start->alive = true;
 
-    // init heap
     openHeap.push_back(start);
-    make_heap(openHeap.begin(), openHeap.end(), CmpUC{}); // self-defined MINI-HEAP based on vector
+    make_heap(openHeap.begin(), openHeap.end(), CmpUC{});
     inOpen[start->state] = start;
     maxQLength = (int)openHeap.size();
 
-    while (!openHeap.empty())
-    {
-        pop_heap(openHeap.begin(), openHeap.end(), CmpUC{}); // pop and keep mini-heap
-        Node *cur = openHeap.back();
-        openHeap.pop_back(); // remove it
+    while (!openHeap.empty()) {
+        // pop min-g
+        pop_heap(openHeap.begin(), openHeap.end(), CmpUC{});
+        Node* cur = openHeap.back();
+        openHeap.pop_back();
 
-        // realse space of closed node
-        if (!cur->alive)
-        {
+        // 弹出就顺手把 inOpen 的这一条清掉（如果还指着它）
+        auto itCurOpen = inOpen.find(cur->state);
+        if (itCurOpen != inOpen.end() && itCurOpen->second == cur) {
+            inOpen.erase(itCurOpen);
+        }
+
+        // lazy deletion
+        if (!cur->alive) {
             numOfDeletionsFromMiddleOfHeap++;
             delete cur;
             continue;
         }
 
-        if (cur->state == goalState)
-        {
-            string path = cur->path;
-            pathLength = (int)path.size();
-            actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
-
+        // 只有“从堆顶弹出目标”才返回 —— 保证最优
+        if (cur->state == goalState) {
+            string res = std::move(cur->path);
+            pathLength = (int)res.size();
+            actualRunningTime = float(clock() - startTime) / CLOCKS_PER_SEC;
             delete cur;
-            for (Node *nd : openHeap)
-                delete nd;
-            return path;
+            for (Node* nd : openHeap) delete nd;
+            return res;
         }
 
-        // Expanded finsished
+        // expand
         numOfStateExpansions++;
 
-        auto itC = bestClosedG.find(cur->state);
-        if (itC == bestClosedG.end() || cur->g < itC->second)
-        {
-            bestClosedG[cur->state] = cur->g;
+        // generate URDL successors
+        Puzzle curPuzzle(cur->state, goalState);
+        auto succs = successors_URDL(&curPuzzle);
+
+        for (auto &pr : succs) {
+            const string &ns = pr.first;
+            const char mv = pr.second;
+
+            // avoid immediate backtrack
+            if (!cur->path.empty() && isInverse(cur->path.back(), mv)) {
+                numOfLocalLoopsAvoided++;
+                continue;
+            }
+
+            int ng = cur->g + 1;
+
+            // CLOSED: worse/equal path -> drop
+            auto itCns = bestClosedG.find(ns);
+            if (itCns != bestClosedG.end()) {
+                numOfAttemptedNodeReExpansions++;
+                continue;
+            }
+
+            // OPEN: check existing
+            auto itOns = inOpen.find(ns);
+            if (itOns != inOpen.end()) {
+                Node* old = itOns->second;
+                if (ng < old->g) {
+                    old->alive = false;               // mark old dead
+                } else {
+                    numOfAttemptedNodeReExpansions++;
+                    continue;                         // not better, skip
+                }
+            }
+
+            // create child and push
+            Node* nd = new Node();
+            nd->state = ns;
+            nd->path  = cur->path; nd->path.push_back(mv);
+            nd->g = ng; nd->h = 0; nd->f = ng; nd->alive = true;
+
+            openHeap.push_back(nd);
+            push_heap(openHeap.begin(), openHeap.end(), CmpUC{});
+            if ((int)openHeap.size() > maxQLength) maxQLength = (int)openHeap.size();
+            inOpen[ns] = nd;
         }
 
+        // finished expanding cur -> commit to CLOSED
+        auto itCcur = bestClosedG.find(cur->state);
+        if (itCcur == bestClosedG.end() || cur->g < itCcur->second) {
+            bestClosedG[cur->state] = cur->g;
+        }
         delete cur;
     }
-    
-    // no result fund
-    actualRunningTime = actualRunningTime = ((float)(clock() - startTime) / CLOCKS_PER_SEC);
+
+    // no solution
+    actualRunningTime = float(clock() - startTime) / CLOCKS_PER_SEC;
+    for (Node* nd : openHeap) delete nd;
     return "";
 }
 
